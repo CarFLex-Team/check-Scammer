@@ -1,14 +1,20 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, RootModel
+from typing import List, Union
 from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 import torch
 import re
 
 app = FastAPI()
 
+# ------------------
+# Config
+# ------------------
+
 MODEL_PATH = "bart_mnli_model"
 LABELS = ["real add", "dealer add"]
 MAX_CHARS = 512
+MAX_TEXTS = 50
 
 BLACKLIST = [
     "total loss",
@@ -23,6 +29,10 @@ BLACKLIST = [
     "dealer"
 ]
 
+# ------------------
+# Load model once
+# ------------------
+
 device = 0 if torch.cuda.is_available() else -1
 
 classifier = pipeline(
@@ -32,34 +42,63 @@ classifier = pipeline(
     device=device
 )
 
-class PredictRequest(BaseModel):
-    texts: list[str]
+# ------------------
+# Request models
+# ------------------
 
-def normalize_text(text):
+class AdsObject(BaseModel):
+    texts: List[str]
+
+class PredictRequest(RootModel[Union[
+    AdsObject,
+    List[AdsObject]
+]]):
+    pass
+
+# ------------------
+# Utils
+# ------------------
+
+def normalize_text(text: str) -> str:
     text = text.lower()
     return re.sub(r"[^a-z0-9\s]", " ", text)
 
-def rule_based_check(text):
+def rule_based_check(text: str):
     cleaned = normalize_text(text)
     for k in BLACKLIST:
         if k in cleaned:
             return True, k
     return False, None
 
+# ------------------
+# Routes
+# ------------------
+
 @app.get("/")
 def health():
     return {"status": "running"}
 
 @app.post("/predict")
-def predict(req: PredictRequest):
-    if not req.texts:
+def predict(payload: PredictRequest):
+
+    data = payload.root
+
+    if isinstance(data, list):
+        texts = data[0].texts
+    else:
+        texts = data.texts
+
+    if not texts:
         raise HTTPException(400, "texts is empty")
+
+    if len(texts) > MAX_TEXTS:
+        raise HTTPException(400, f"max {MAX_TEXTS} texts allowed")
 
     results = []
     batch = []
     mapping = []
 
-    for i, text in enumerate(req.texts):
+    for i, text in enumerate(texts):
         text = text[:MAX_CHARS]
         flagged, keyword = rule_based_check(text)
 
