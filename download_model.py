@@ -2,7 +2,7 @@ import gdown
 import zipfile
 import os
 
-FILE_ID = "1bOwBm-5MKnuvjNDdA83_EtFJUxzGnAPb"
+FILE_ID = "1ildQzqDnYel42zSkki6EW1c9scg3BT59"
 ZIP_NAME = "bart_mnli_model.zip"
 MODEL_DIR = "bart_mnli_model"
 
